@@ -19,9 +19,11 @@ use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
 use lazy_static::*;
 use switch::__switch;
-pub use task::{TaskControlBlock, TaskStatus};
+pub use task::{TaskControlBlock, TaskStatus, TaskInfo};
 
 pub use context::TaskContext;
+
+use crate::timer::get_time_ms;
 
 /// The task manager, where all the tasks are managed.
 ///
@@ -54,6 +56,8 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
+            task_info: TaskInfo::new(TaskStatus::UnInit),
+            task_start_time: 0,
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
@@ -80,6 +84,7 @@ impl TaskManager {
         let mut inner = self.inner.exclusive_access();
         let task0 = &mut inner.tasks[0];
         task0.task_status = TaskStatus::Running;
+        task0.task_start_time = get_time_ms();
         let next_task_cx_ptr = &task0.task_cx as *const TaskContext;
         drop(inner);
         let mut _unused = TaskContext::zero_init();
@@ -135,6 +140,27 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    fn refresh_task_info(&self, syscall_idx: usize, refresh_flag: bool){
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let status = inner.tasks[current].task_status;
+        inner.tasks[current].task_info.set_status(status);
+        if refresh_flag {
+            inner.tasks[current].task_info.increase_syscall_time(syscall_idx);
+        }
+    }
+
+    fn get_current_task_info(&self) ->TaskInfo{
+        self.refresh_task_info(0, false);
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let run_time = get_time_ms() - 1;
+        inner.tasks[current].task_info.set_run_time(run_time);
+
+        let current_task_info = inner.tasks[current].task_info;
+        current_task_info
+    }
 }
 
 /// Run the first task in task list.
@@ -168,4 +194,12 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
+}
+
+pub fn get_current_task_status() -> TaskInfo {
+    TASK_MANAGER.get_current_task_info()
+}
+
+pub fn inc_task_syscall_times(syscall_idx: usize){
+    TASK_MANAGER.refresh_task_info(syscall_idx, true);
 }
