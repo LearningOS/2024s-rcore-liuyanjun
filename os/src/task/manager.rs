@@ -9,6 +9,8 @@ pub struct TaskManager {
     ready_queue: VecDeque<Arc<TaskControlBlock>>,
 }
 
+const BIG_STRIDE:isize = 0x10000000;
+
 /// A simple FIFO scheduler.
 impl TaskManager {
     ///Creat an empty TaskManager
@@ -24,6 +26,32 @@ impl TaskManager {
     /// Take a process out of the ready queue
     pub fn fetch(&mut self) -> Option<Arc<TaskControlBlock>> {
         self.ready_queue.pop_front()
+    }
+
+    pub fn fetch_min_step_and_add_pass(&mut self) -> Option<Arc<TaskControlBlock>>{
+        let mut min_tcb = self.ready_queue[0].clone();
+
+        let mut  min_task = min_tcb.inner_exclusive_access();
+        let mut min_stride = min_task.stride;
+        drop(min_task);
+
+        for tcb in &self.ready_queue {
+            let task = tcb.inner_exclusive_access();
+            if task.stride < min_stride {
+                min_tcb = tcb.clone();
+                min_stride = task.stride;
+            }
+        }
+
+        if let Some(index) = self.ready_queue.iter().position(|t| Arc::ptr_eq(t, &min_tcb)){
+            self.ready_queue.remove(index);
+        }
+
+        let mut min_task = min_tcb.inner_exclusive_access();
+        min_task.stride = min_task.stride + BIG_STRIDE / min_task.priority;
+        drop(min_task);
+        
+        Some(min_tcb)
     }
 }
 
@@ -43,4 +71,8 @@ pub fn add_task(task: Arc<TaskControlBlock>) {
 pub fn fetch_task() -> Option<Arc<TaskControlBlock>> {
     //trace!("kernel: TaskManager::fetch_task");
     TASK_MANAGER.exclusive_access().fetch()
+}
+
+pub fn fetch_min_task() -> Option<Arc<TaskControlBlock>> {
+    TASK_MANAGER.exclusive_access().fetch_min_step_and_add_pass()
 }

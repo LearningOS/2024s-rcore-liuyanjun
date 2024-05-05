@@ -4,11 +4,12 @@
 //! the current running state of CPU is recorded,
 //! and the replacement and transfer of control flow of different applications are executed.
 
-use super::__switch;
-use super::{fetch_task, TaskStatus};
+use super::{__switch, TaskInfo};
+use super::{fetch_task, TaskStatus, fetch_min_task};
 use super::{TaskContext, TaskControlBlock};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
+use crate::timer::get_time_ms;
 use alloc::sync::Arc;
 use lazy_static::*;
 
@@ -44,6 +45,42 @@ impl Processor {
     pub fn current(&self) -> Option<Arc<TaskControlBlock>> {
         self.current.as_ref().map(Arc::clone)
     }
+    pub fn refresh_task_info(&self, syscall_idx: usize, refresh_flag: bool){
+        let inner = self.current().unwrap();
+        let mut current_task = inner.inner_exclusive_access();
+        let status = current_task.task_status;
+        current_task.task_info.set_status(status);
+        if refresh_flag {
+            current_task.task_info.increase_syscall_time(syscall_idx);
+        }
+    }
+
+    pub fn get_current_task_info(&self) ->TaskInfo{
+        let inner = self.current().unwrap();
+        let mut current_task = inner.inner_exclusive_access();
+        
+        let run_time = get_time_ms() - current_task.task_start_time;
+        current_task.task_info.set_run_time(run_time);
+
+        let current_task_info = current_task.task_info;
+        current_task_info
+    }
+
+    pub fn current_task_m_map(&self, start: usize, len:usize, port: usize) -> isize{
+
+        let inner = self.current().unwrap();
+        let mut current_task = inner.inner_exclusive_access();
+
+        current_task.m_map(start, len, port)
+
+    }
+
+    pub fn current_task_m_unmap(&self, start: usize, len:usize) -> isize{
+        let inner = self.current().unwrap();
+        let mut current_task = inner.inner_exclusive_access();
+
+        current_task.m_unmap(start, len)
+    }
 }
 
 lazy_static! {
@@ -55,7 +92,7 @@ lazy_static! {
 pub fn run_tasks() {
     loop {
         let mut processor = PROCESSOR.exclusive_access();
-        if let Some(task) = fetch_task() {
+        if let Some(task) = fetch_min_task() {
             let idle_task_cx_ptr = processor.get_idle_task_cx_ptr();
             // access coming task TCB exclusively
             let mut task_inner = task.inner_exclusive_access();
@@ -108,4 +145,20 @@ pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
     unsafe {
         __switch(switched_task_cx_ptr, idle_task_cx_ptr);
     }
+}
+
+pub fn get_current_processor_info() -> TaskInfo {
+    PROCESSOR.exclusive_access().get_current_task_info()
+}
+
+pub fn refresh_processor_syscall_times(syscall: usize){
+    PROCESSOR.exclusive_access().refresh_task_info(syscall, true);
+}
+
+pub fn current_processor_m_map(start: usize, len: usize, port: usize) -> isize {
+    PROCESSOR.exclusive_access().current_task_m_map(start, len, port)
+}
+
+pub fn current_processor_m_unmap(start: usize, len: usize) -> isize {
+    PROCESSOR.exclusive_access().current_task_m_unmap(start, len)
 }
