@@ -86,6 +86,7 @@ pub fn list_apps() {
     println!("/**** APPS ****");
     for app in ROOT_INODE.ls() {
         println!("{}", app);
+        LINK_MANAGER.exclusive_access().add(app.clone().as_str(), "none_name_just_test");
     }
     println!("**************/");
 }
