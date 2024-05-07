@@ -49,6 +49,13 @@ pub struct ProcessControlBlockInner {
     pub semaphore_list: Vec<Option<Arc<Semaphore>>>,
     /// condvar list
     pub condvar_list: Vec<Option<Arc<Condvar>>>,
+
+    pub deadlock_detect: i32,
+    pub available: Vec<usize>,
+    pub work: Vec<usize>,
+    pub allocation: Vec<Vec<usize>>,
+    pub need: Vec<Vec<usize>>,
+    pub finish: Vec<bool>,
 }
 
 impl ProcessControlBlockInner {
@@ -119,6 +126,14 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+
+                    //initialize deadlock detection
+                    deadlock_detect: 1,
+                    available: Vec::new(),
+                    work: Vec::new(),
+                    allocation: Vec::new(),
+                    need: Vec::new(),
+                    finish: Vec::new(),
                 })
             },
         });
@@ -143,6 +158,20 @@ impl ProcessControlBlock {
         );
         // add main thread to the process
         let mut process_inner = process.inner_exclusive_access();
+
+        let mut allocation = Vec::new();
+        let mut need = Vec::new();
+        for _i in 0..2{
+            process_inner.available.push(0);
+            process_inner.work.push(0);
+
+            allocation.push(0);
+            need.push(0);
+        }
+        process_inner.allocation.push(allocation);
+        process_inner.need.push(need);
+        process_inner.finish.push(true);
+
         process_inner.tasks.push(Some(Arc::clone(&task)));
         drop(process_inner);
         insert_into_pid2process(process.getpid(), Arc::clone(&process));
@@ -245,6 +274,14 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+
+                    //initialize deadlock detection
+                    deadlock_detect: 1,
+                    available: Vec::new(),
+                    work: Vec::new(),
+                    allocation: Vec::new(),
+                    need: Vec::new(),
+                    finish: Vec::new(),
                 })
             },
         });
@@ -266,6 +303,20 @@ impl ProcessControlBlock {
         ));
         // attach task to child process
         let mut child_inner = child.inner_exclusive_access();
+
+        let mut allocation = Vec::new();
+        let mut need = Vec::new();
+        for _i in 0..2{
+            child_inner.available.push(0);
+            child_inner.work.push(0);
+
+            allocation.push(0);
+            need.push(0);
+        }
+        child_inner.allocation.push(allocation);
+        child_inner.need.push(need);
+        child_inner.finish.push(true);
+
         child_inner.tasks.push(Some(Arc::clone(&task)));
         drop(child_inner);
         // modify kstack_top in trap_cx of this thread
