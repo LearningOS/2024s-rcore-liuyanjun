@@ -47,8 +47,8 @@ impl TaskManager {
             .tid;
             let process = task.process.upgrade().unwrap();
             let mut process_inner = process.inner_exclusive_access();
-            process_inner.work[0] = process_inner.allocation[tid][0];
-            process_inner.work[1] = process_inner.allocation[tid][1];
+            process_inner.work[0] += process_inner.allocation[tid][0];
+            process_inner.work[1] += process_inner.allocation[tid][1];
             
             process_inner.finish[tid] = true;
 
