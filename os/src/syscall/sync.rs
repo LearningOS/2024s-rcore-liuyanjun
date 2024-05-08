@@ -77,8 +77,7 @@ pub fn sys_mutex_lock(mutex_id: usize) -> isize {
     if process_inner.work[0] > process_inner.need[tid][0]{
         process_inner.need[tid][0] +=1;
     }else{
-        println!("[kernel] no available:{}, need[tid][0]: {}, tid[{}]", process_inner.available[0]
-        , process_inner.need[tid][0], tid);
+        println!("[kernel] no available:{}, need[tid][0]: {}, tid[{}]", process_inner.available[0], process_inner.need[tid][0], tid);
         return -0xDEAD;
     }
 
